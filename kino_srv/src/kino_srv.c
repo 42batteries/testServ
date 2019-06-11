@@ -13,35 +13,36 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <math.h>
 
 //net
-#define PORT 					4444
+#define PORT 					(4444)
 #define IP_ADRESS_SERVER 		"127.0.0.1"
-#define SOCKET_QUEUE_LENGHT		10
+#define SOCKET_QUEUE_LENGHT		(10)
 //io
-#define INPUT_NUMBER_LEGHT 		16
-#define INPUT_BUFFER_LEGHT 		1024
-#define OUTPUT_BUFFER_LENGHT 	64
+#define INPUT_NUMBER_LENGHT		(16)
+#define INPUT_BUFFER_LENGHT 	(1024)
+#define OUTPUT_BUFFER_LENGHT 	(64)
 //parsing
-#define OPERATION_SIMBOL_LENGHT 1
-#define INPUT_VALUE_MAX 		999
-#define INPUT_VALUE_MIN 		-999
+#define OPERATION_SIMBOL_LENGHT (1)
+#define INPUT_VALUE_MAX 		(999)
+#define INPUT_VALUE_MIN 		(-999)
 #define SEPARATOR  " "
 #define OPERATIONS '+','-','/',':','*','^','M','m','h','d','r'
-#define END_SIMBOL_CODE			0x0a
+#define END_SIMBOL_CODE			(0x0a)
 //check and validation
-#define VALIDATION_OK 										  0
-#define VALIDATION_ERROR_FIRST_NUMBER_LEGHT                   1
-#define VALIDATION_ERROR_FIRST_NUMBER_RANGE                   2
-#define VALIDATION_ERROR_FIRST_NUMBER_INCORRECT_OR_ZERRO      3
-#define VALIDATION_ERROR_SECOND_NUMBER_LEGHT                  4
-#define VALIDATION_ERROR_SECOND_NUMBER_RANGE                  5
-#define VALIDATION_ERROR_SECOND_NUMBER_INCORRECT_OR_ZERRO     6
-#define VALIDATION_ERROR_UNKNOWN_OPERATION                    8
-#define VALIDATION_ERROR_INPUT_DATA                           10
+#define VALIDATION_OK 										  (0)
+#define VALIDATION_ERROR_FIRST_NUMBER_LENGHT                  (1)
+#define VALIDATION_ERROR_FIRST_NUMBER_RANGE                   (2)
+#define VALIDATION_ERROR_FIRST_NUMBER_INCORRECT_OR_ZERO	      (3)
+#define VALIDATION_ERROR_SECOND_NUMBER_LENGHT                 (4)
+#define VALIDATION_ERROR_SECOND_NUMBER_RANGE                  (5)
+#define VALIDATION_ERROR_SECOND_NUMBER_INCORRECT_OR_ZERO  	  (6)
+#define VALIDATION_ERROR_UNKNOWN_OPERATION                    (8)
+#define VALIDATION_ERROR_INPUT_DATA                           (10)
 
 typedef struct {
 	double fn;
@@ -58,22 +59,26 @@ static int parse_and_check_validity(in_data * indata);
 static double select_operation_and_process_calculation(in_data * indata);
 static void set_error_msg(char * buff, int error);
 static char * calculate_expression(char * buff_);
+static int initserver(int type, const struct sockaddr *addr, socklen_t len,
+		int qlen);
+static int sendall(int connect_fd, char *buffer, int numBytes, int flags);
+static int recvall(int connect_fd, char *buffer, int numBytes, int flags);
 
 static int define_and_fill_numbers_in_input_struct(in_data * indata) {
-	if (strlen(indata->string_first_number) > INPUT_NUMBER_LEGHT)
-		return VALIDATION_ERROR_FIRST_NUMBER_LEGHT;
+	if (strlen(indata->string_first_number) > INPUT_NUMBER_LENGHT)
+		return VALIDATION_ERROR_FIRST_NUMBER_LENGHT;
 
-	if (strlen(indata->string_second_number) > INPUT_NUMBER_LEGHT)
-		return VALIDATION_ERROR_SECOND_NUMBER_LEGHT;
+	if (strlen(indata->string_second_number) > INPUT_NUMBER_LENGHT)
+		return VALIDATION_ERROR_SECOND_NUMBER_LENGHT;
 
 	indata->fn = atof(indata->string_first_number);
 	indata->sn = atof(indata->string_second_number);
 
 	if (indata->fn == 0) {
-		return VALIDATION_ERROR_FIRST_NUMBER_INCORRECT_OR_ZERRO;
+		return VALIDATION_ERROR_FIRST_NUMBER_INCORRECT_OR_ZERO;
 	}
 	if (indata->sn == 0)
-		return VALIDATION_ERROR_SECOND_NUMBER_INCORRECT_OR_ZERRO;
+		return VALIDATION_ERROR_SECOND_NUMBER_INCORRECT_OR_ZERO;
 
 	if (indata->fn < INPUT_VALUE_MIN || indata->fn > INPUT_VALUE_MAX)
 		return VALIDATION_ERROR_FIRST_NUMBER_RANGE;
@@ -159,7 +164,7 @@ static double select_operation_and_process_calculation(in_data * indata) {
 
 static void set_error_msg(char * buff, int error) {
 	switch (error) {
-	case VALIDATION_ERROR_FIRST_NUMBER_LEGHT:
+	case VALIDATION_ERROR_FIRST_NUMBER_LENGHT:
 		strcpy(buff, "Error: Too long first number.\n");
 		break;
 
@@ -167,12 +172,12 @@ static void set_error_msg(char * buff, int error) {
 		strcpy(buff, "Error: The first number is out of range.\n");
 		break;
 
-	case VALIDATION_ERROR_FIRST_NUMBER_INCORRECT_OR_ZERRO:
+	case VALIDATION_ERROR_FIRST_NUMBER_INCORRECT_OR_ZERO:
 		strcpy(buff,
 				"Error: Wrong first number entered or non numeric data entered.\n");
 		break;
 
-	case VALIDATION_ERROR_SECOND_NUMBER_LEGHT:
+	case VALIDATION_ERROR_SECOND_NUMBER_LENGHT:
 		strcpy(buff, "Error: Too long second number.\n");
 		break;
 
@@ -180,7 +185,7 @@ static void set_error_msg(char * buff, int error) {
 		strcpy(buff, "Error: The second number is out of range.\n");
 		break;
 
-	case VALIDATION_ERROR_SECOND_NUMBER_INCORRECT_OR_ZERRO:
+	case VALIDATION_ERROR_SECOND_NUMBER_INCORRECT_OR_ZERO:
 		strcpy(buff,
 				"Error: Wrong second number entered or non numeric data entered.\n");
 		break;
@@ -246,56 +251,61 @@ static int initserver(int type, const struct sockaddr *addr, socklen_t len,
 
 	return fd;
 }
-static int sendall(int s, char *buf, int len, int flags) {
-	int total = 0;
-	int n;
+static int sendall(int connect_fd, char *buffer, int numBytes, int flags) {
+	int counter_total_bytes = 0;
+	int counter_bytes_sended_per_iter;
 
-	while (total < len) {
-		n = send(s, buf + total, len - total, flags);
-		if (n == -1) {
+	while (counter_total_bytes < numBytes) {
+		counter_bytes_sended_per_iter = send(connect_fd,
+				buffer + counter_total_bytes, numBytes - counter_total_bytes,
+				flags);
+		if (counter_bytes_sended_per_iter == -1) {
 			break;
 		}
-		total += n;
+		counter_total_bytes += counter_bytes_sended_per_iter;
 
 	}
-	if (n == -1) {
+	if (counter_bytes_sended_per_iter == -1) {
 		printf("[-]Error:Data was not send. Connection will be closed\n");
-		close(s);
+		close(connect_fd);
 	}
-	return (n == -1 ? -1 : total);
+	return (counter_bytes_sended_per_iter == -1 ? -1 : counter_total_bytes);
 }
-static int recvall(int socket, char *buffer, int numBytes, int flags) {
-	int ret; // Return value for 'recv'
-	int receivedBytes; // Total number of bytes received
 
-	// Retrieve the given number of bytes.
-	receivedBytes = 0;
-	while ((receivedBytes < numBytes) && ret != -1
+static int recvall(int connect_fd, char *buffer, int numBytes, int flags) {
+	int counter_bytes_recived_per_iter;
+	int counter_total_bytes;
+
+	counter_total_bytes = 0;
+	while ((counter_total_bytes < numBytes)
+			&& counter_bytes_recived_per_iter != -1
 			&& !strrchr(buffer, END_SIMBOL_CODE)) {
-		ret = recv(socket, buffer + receivedBytes, numBytes - receivedBytes, 0);
+		counter_bytes_recived_per_iter = recv(connect_fd,
+				buffer + counter_total_bytes, numBytes - counter_total_bytes,
+				0);
 
-		if (ret == -1) {
-			close(socket);
+		if (counter_total_bytes == -1) {
+			close(connect_fd);
 			printf("[-]Error while receive data. Connection will be closed\n");
 			exit(1);
-		} else if (ret == 0) {
+		} else if (counter_bytes_recived_per_iter == 0) {
 
-			receivedBytes += ret;
+			counter_total_bytes += counter_bytes_recived_per_iter;
 			break;
 		} else {
-			receivedBytes += ret;
+			counter_total_bytes += counter_bytes_recived_per_iter;
 		}
 	}
 
-	buffer[receivedBytes] = '\0';
-	return (receivedBytes < 1 ? -1 : receivedBytes);
+	buffer[counter_total_bytes] = '\0';
+	return (counter_total_bytes < 1 ? -1 : counter_total_bytes);
 
 }
 int main() {
 
 	int socket_fd;
 	struct sockaddr_in seraddr;
-	char buff[INPUT_BUFFER_LEGHT];
+	char buffer[INPUT_BUFFER_LENGHT];
 
 	seraddr.sin_family = AF_INET;
 	seraddr.sin_addr.s_addr = inet_addr(IP_ADRESS_SERVER);
@@ -310,43 +320,54 @@ int main() {
 	while (1) {
 
 		int connect_fd;
-		struct sockaddr_in cli_addr;
-		socklen_t clilen = sizeof(cli_addr);
+		struct sockaddr_in client_socket_address;
+		socklen_t client_socket_lenght = sizeof(client_socket_address);
 
-		if ((connect_fd = accept(socket_fd, (struct sockaddr *) &cli_addr,
-				&clilen)) == -1) {
+		if ((connect_fd = accept(socket_fd, (struct sockaddr *) &client_socket_address,
+				&client_socket_lenght)) == -1) {
 			printf("[-]Error accept client\n");
 			continue;
 		}
-		pid_t childpid;
-		if ((childpid = fork()) == 0) {
+		pid_t child_pid;
+		if ((child_pid = fork()) == 0) {
 			while (1) {
-				if (recvall(connect_fd, buff, INPUT_BUFFER_LEGHT, 0) == -1) {
+				if (recvall(connect_fd, buffer, INPUT_BUFFER_LENGHT, 0) == -1) {
 					printf(
 							"[-]Error:Data was not received. Connection will be closed\n");
 					close(connect_fd);
-					return 0;
+					return(0);
 				}
 
-				if (!strcmp(buff, "exit\r\n")) {
-					strcpy(buff, "Connection closed\n");
-					if (sendall(connect_fd, buff, strlen(buff), 0) == -1)
-						return 0;
+				if (!strcmp(buffer, "exit\r\n")) {
+					strcpy(buffer, "Connection closed\n");
+					if (sendall(connect_fd, buffer, strlen(buffer), 0) == -1)
+						return(0);
 
 					printf("Disconnected from %s:%d\n",
-							inet_ntoa(cli_addr.sin_addr),
-							ntohs(cli_addr.sin_port));
+							inet_ntoa(client_socket_address.sin_addr),
+							ntohs(client_socket_address.sin_port));
 					close(connect_fd);
-					return 0;
+					return(0);
 				} else {
-					printf("Client: %s\n", buff);
-					calculate_expression(buff);
-					if (sendall(connect_fd, buff, strlen(buff), 0) == -1)
-						return 0;
+					printf("Client: %s\n", buffer);
+					calculate_expression(buffer);
+					if (sendall(connect_fd, buffer, strlen(buffer), 0) == -1)
+						return(0);
 
-					memset(buff, 0, sizeof(buff));
+					memset(buffer, 0, sizeof(buffer));
 				}
 			}
+		}else
+		{
+			//parent process
+            int status;
+            waitpid(child_pid, &status, 0);
+            if(WIFEXITED(status)) {
+                printf("Exit normally with code %i\n", WEXITSTATUS(status));
+            }
+            if(WIFSIGNALED(status)) {
+                printf("killed with signal %i\n", WTERMSIG(status));
+            }
 		}
 
 	}
