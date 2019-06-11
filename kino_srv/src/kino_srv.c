@@ -58,8 +58,6 @@ static double select_operation_and_process_calculation(in_data * indata);
 static void set_error_msg(char * buff, int error);
 static char * calculate_expression(char * buff_);
 
-
-
 static int define_and_fill_numbers_in_input_struct(in_data * indata) {
 	if (strlen(indata->string_first_number) > INPUT_NUMBER_LEGHT)
 		return VALIDATION_ERROR_FIRST_NUMBER_LEGHT;
@@ -220,76 +218,139 @@ static char * calculate_expression(char * buff_) {
 	return buff_;
 }
 
+static int initserver(int type, const struct sockaddr *addr, socklen_t len,
+		int qlen) {
+	printf("[+]Server Socket is created.\n");
+	int fd;
+
+	if ((fd = socket(addr->sa_family, type, 0)) < 0) {
+		printf("[-]Error in connection.\n");
+		return 0;
+	}
+	if (bind(fd, addr, len) < 0) {
+		printf("[-]Error in binding.\n");
+		close(fd);
+		return -1;
+	}
+
+	if (type == SOCK_STREAM || type == SOCK_SEQPACKET) {
+		if (listen(fd, qlen) == 0) {
+			printf("[+]Listening....\n");
+		} else {
+			printf("[-]Error in binding.\n");
+			close(fd);
+			return -1;
+		}
+	}
+
+	return fd;
+}
+static int sendall(int s, char *buf, int len, int flags) {
+	int total = 0;
+	int n;
+
+	while (total < len) {
+		n = send(s, buf + total, len - total, flags);
+		if (n == -1) {
+			break;
+		}
+		total += n;
+
+	}
+	if (n == -1) {
+		printf("[-]Error:Data was not send. Connection will be closed\n");
+		close(s);
+	}
+	return (n == -1 ? -1 : total);
+}
+static int recvall(int socket, char *buffer, int numBytes, int flags) {
+	int ret; // Return value for 'recv'
+	int receivedBytes; // Total number of bytes received
+
+	// Retrieve the given number of bytes.
+	receivedBytes = 0;
+	while ((receivedBytes < numBytes) && ret != -1
+			&& strncmp(buffer + receivedBytes - sizeof("\r\n"), "\r\n",
+					sizeof("\r\n"))) {
+		printf("buff: %s \n", buffer + 1 + receivedBytes - sizeof("\r\n"));
+		ret = recv(socket, buffer + receivedBytes, numBytes - receivedBytes, 0);
+
+		if (ret == -1) {
+			close(socket);
+			printf("[-]Error while receive data. Connection will be closed\n");
+			exit(1);
+		} else if (ret == 0) {
+
+			receivedBytes += ret;
+			break;
+		} else {
+			receivedBytes += ret;
+		}
+	}
+
+	buffer[receivedBytes] = '\0';
+	return (receivedBytes < 1 ? -1 : receivedBytes);
+
+}
 int main() {
 
-	int sockfd, ret;
-	struct sockaddr_in serverAddr;
+	int socket_fd;
+	struct sockaddr_in seraddr;
+	char buff[INPUT_BUFFER_LEGHT];
 
-	int newSocket;
-	struct sockaddr_in newAddr;
+	seraddr.sin_family = AF_INET;
+	seraddr.sin_addr.s_addr = inet_addr(IP_ADRESS_SERVER);
+	seraddr.sin_port = htons(PORT);
 
-	socklen_t addr_size;
-
-	char buffer[INPUT_BUFFER_LEGHT];
-	pid_t childpid;
-
-	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	if (sockfd < 0) {
-		printf("[-]Error in connection.\n");
-		exit(1);
-	}
-	printf("[+]Server Socket is created.\n");
-
-	memset(&serverAddr, '\0', sizeof(serverAddr));
-	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_port = htons(PORT);
-	serverAddr.sin_addr.s_addr = inet_addr(IP_ADRESS_SERVER);
-
-	ret = bind(sockfd, (struct sockaddr*) &serverAddr, sizeof(serverAddr));
-	if (ret < 0) {
-		printf("[-]Error in binding.\n");
-		exit(1);
-	}
-	printf("[+]Bind to port %d\n", PORT);
-
-	if (listen(sockfd, SOCKET_QUEUE_LENGHT) == 0) {
-		printf("[+]Listening....\n");
-	} else {
-		printf("[-]Error in binding.\n");
+	if ((socket_fd = initserver(SOCK_STREAM, (struct sockaddr *) &seraddr,
+			sizeof(seraddr), SOCKET_QUEUE_LENGHT)) == -1) {
+		printf("[-]Error initialization server\n");
+		return 0;
 	}
 
 	while (1) {
-		newSocket = accept(sockfd, (struct sockaddr*) &newAddr, &addr_size);
-		if (newSocket < 0) {
-			exit(1);
+
+		int connect_fd;
+		struct sockaddr_in cli_addr;
+		socklen_t clilen = sizeof(cli_addr);
+
+		if ((connect_fd = accept(socket_fd, (struct sockaddr *) &cli_addr,
+				&clilen)) == -1) {
+			printf("[-]Error accept client\n");
+			continue;
 		}
-		printf("Connection accepted from %s:%d\n", inet_ntoa(newAddr.sin_addr),
-				ntohs(newAddr.sin_port));
-
+		pid_t childpid;
 		if ((childpid = fork()) == 0) {
-			close(sockfd);
-
 			while (1) {
-				recv(newSocket, buffer, INPUT_BUFFER_LEGHT, 0);
-				if (!strcmp(buffer, "exit\r\n")) {
-					strcpy(buffer, "Connection closed");
-					send(newSocket, buffer, strlen(buffer), 0);
+				if (recvall(connect_fd, buff, INPUT_BUFFER_LEGHT, 0) == -1) {
+					printf(
+							"[-]Error:Data was not received. Connection will be closed\n");
+					close(connect_fd);
+					return 0;
+				}
+
+				if (!strcmp(buff, "exit\r\n")) {
+					strcpy(buff, "Connection closed\n");
+					if (sendall(connect_fd, buff, strlen(buff), 0) == -1)
+						return 0;
+
 					printf("Disconnected from %s:%d\n",
-							inet_ntoa(newAddr.sin_addr),
-							ntohs(newAddr.sin_port));
-					break;
+							inet_ntoa(cli_addr.sin_addr),
+							ntohs(cli_addr.sin_port));
+					close(connect_fd);
+					return 0;
 				} else {
-					printf("Client: %s\n", buffer);
-					strcpy(buffer, calculate_expression(buffer));
-					send(newSocket, buffer, strlen(buffer), 0);
-					bzero(buffer, sizeof(buffer));
+					printf("Client: %s\n", buff);
+					calculate_expression(buff);
+					if (sendall(connect_fd, buff, strlen(buff), 0) == -1)
+						return 0;
+
+					memset(buff, 0, sizeof(buff));
 				}
 			}
 		}
 
 	}
-
-	close(newSocket);
 
 	return 0;
 }
