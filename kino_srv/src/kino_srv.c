@@ -31,6 +31,7 @@
 #define INPUT_VALUE_MIN 		-999
 #define SEPARATOR  " "
 #define OPERATIONS '+','-','/',':','*','^','M','m','h','d','r'
+#define END_SIMBOL_CODE			0x0a
 //check and validation
 #define VALIDATION_OK 										  0
 #define VALIDATION_ERROR_FIRST_NUMBER_LEGHT                   1
@@ -270,9 +271,7 @@ static int recvall(int socket, char *buffer, int numBytes, int flags) {
 	// Retrieve the given number of bytes.
 	receivedBytes = 0;
 	while ((receivedBytes < numBytes) && ret != -1
-			&& strncmp(buffer + receivedBytes - sizeof("\r\n"), "\r\n",
-					sizeof("\r\n"))) {
-		printf("buff: %s \n", buffer + 1 + receivedBytes - sizeof("\r\n"));
+			&& !strrchr(buffer, END_SIMBOL_CODE)) {
 		ret = recv(socket, buffer + receivedBytes, numBytes - receivedBytes, 0);
 
 		if (ret == -1) {
