@@ -20,29 +20,31 @@
 
 //net
 #define PORT 					(4444)
-#define IP_ADRESS_SERVER 		"127.0.0.1"
+#define IP_ADRESS_SERVER		"127.0.0.1"
 #define SOCKET_QUEUE_LENGHT		(10)
 //io
 #define INPUT_NUMBER_LENGHT		(16)
-#define INPUT_BUFFER_LENGHT 	(1024)
-#define OUTPUT_BUFFER_LENGHT 	(64)
+#define INPUT_BUFFER_LENGHT		(1024)
+#define OUTPUT_BUFFER_LENGHT	(64)
 //parsing
-#define OPERATION_SIMBOL_LENGHT (1)
-#define INPUT_VALUE_MAX 		(999)
-#define INPUT_VALUE_MIN 		(-999)
-#define SEPARATOR  " "
-#define OPERATIONS '+','-','/',':','*','^','M','m','h','d','r'
+#define OPERATION_SIMBOL_LENGHT	(1)
+#define INPUT_VALUE_MAX			(999)
+#define INPUT_VALUE_MIN			(-999)
+#define SEPARATOR  				" "
+#define OPERATIONS 				'+','-','/',':','*','^','M','m','h','d','r'
 #define END_SIMBOL_CODE			(0x0a)
 //check and validation
-#define VALIDATION_OK 										  (0)
-#define VALIDATION_ERROR_FIRST_NUMBER_LENGHT                  (1)
-#define VALIDATION_ERROR_FIRST_NUMBER_RANGE                   (2)
-#define VALIDATION_ERROR_FIRST_NUMBER_INCORRECT_OR_ZERO	      (3)
-#define VALIDATION_ERROR_SECOND_NUMBER_LENGHT                 (4)
-#define VALIDATION_ERROR_SECOND_NUMBER_RANGE                  (5)
-#define VALIDATION_ERROR_SECOND_NUMBER_INCORRECT_OR_ZERO  	  (6)
-#define VALIDATION_ERROR_UNKNOWN_OPERATION                    (8)
-#define VALIDATION_ERROR_INPUT_DATA                           (10)
+typedef enum Validations{
+	VALIDATION_OK,
+	VALIDATION_ERROR_FIRST_NUMBER_LENGHT,
+	VALIDATION_ERROR_FIRST_NUMBER_RANGE,
+	VALIDATION_ERROR_FIRST_NUMBER_INCORRECT_OR_ZERO,
+	VALIDATION_ERROR_SECOND_NUMBER_LENGHT,
+	VALIDATION_ERROR_SECOND_NUMBER_RANGE,
+	VALIDATION_ERROR_SECOND_NUMBER_INCORRECT_OR_ZERO,
+	VALIDATION_ERROR_UNKNOWN_OPERATION,
+	VALIDATION_ERROR_INPUT_DATA,
+} Errors;
 
 typedef struct {
 	double fn;
@@ -97,17 +99,16 @@ static int define_and_fill_numbers_in_input_struct(in_data * indata) {
 }
 
 static int parse_and_check_validity(in_data * indata) {
-	const char separator[1] = SEPARATOR;
 
-	indata->string_first_number = strtok(indata->buff, separator);
+	indata->string_first_number = strtok(indata->buff, SEPARATOR);
 
 	if (indata->string_first_number != NULL) {
-		indata->operation = strtok(NULL, separator);
+		indata->operation = strtok(NULL, SEPARATOR);
 	} else {
 		return VALIDATION_ERROR_INPUT_DATA;
 	}
 	if (indata->operation != NULL) {
-		indata->string_second_number = strtok(NULL, separator);
+		indata->string_second_number = strtok(NULL, SEPARATOR);
 	} else {
 		return VALIDATION_ERROR_INPUT_DATA;
 	}
@@ -163,7 +164,10 @@ static double select_operation_and_process_calculation(in_data * indata) {
 }
 
 static void set_error_msg(char * buff, int error) {
-	switch (error) {
+	switch ((Errors) error) {
+	case VALIDATION_OK:
+
+		break;
 	case VALIDATION_ERROR_FIRST_NUMBER_LENGHT:
 		strcpy(buff, "Error: Too long first number.\n");
 		break;
@@ -329,12 +333,12 @@ int main() {
 			printf("[-]Error accept client\n");
 			continue;
 		}
-		pid_t child_pid;
 		signal(SIGCHLD, SIG_IGN);
-		if ((child_pid = fork()) == 0) {
+		if (fork() == 0) {
 			close(socket_fd);
 			while (1) {
-				if (recv_all(connect_fd, buffer, INPUT_BUFFER_LENGHT, 0) == -1) {
+				if (recv_all(connect_fd, buffer, INPUT_BUFFER_LENGHT, 0)
+						== -1) {
 					printf(
 							"[-]Error:Data was not received. Connection will be closed\n");
 					close(connect_fd);
