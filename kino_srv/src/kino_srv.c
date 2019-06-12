@@ -59,10 +59,10 @@ static int parse_and_check_validity(in_data * indata);
 static double select_operation_and_process_calculation(in_data * indata);
 static void set_error_msg(char * buff, int error);
 static char * calculate_expression(char * buff_);
-static int initserver(int type, const struct sockaddr *addr, socklen_t len,
-		int qlen);
-static int sendall(int connect_fd, char *buffer, int numBytes, int flags);
-static int recvall(int connect_fd, char *buffer, int numBytes, int flags);
+static int init_server(int type, const struct sockaddr *address_server,
+		socklen_t address_lenght, int queue_lenght);
+static int send_all(int connect_fd, char *buffer, int numBytes, int flags);
+static int recv_all(int connect_fd, char *buffer, int numBytes, int flags);
 
 static int define_and_fill_numbers_in_input_struct(in_data * indata) {
 	if (strlen(indata->string_first_number) > INPUT_NUMBER_LENGHT)
@@ -224,23 +224,23 @@ static char * calculate_expression(char * buff_) {
 	return buff_;
 }
 
-static int initserver(int type, const struct sockaddr *addr, socklen_t len,
-		int qlen) {
+static int init_server(int type, const struct sockaddr *address_server,
+		socklen_t address_lenght, int queue_lenght) {
 	printf("[+]Server Socket is created.\n");
 	int fd;
 
-	if ((fd = socket(addr->sa_family, type, 0)) < 0) {
+	if ((fd = socket(address_server->sa_family, type, 0)) < 0) {
 		printf("[-]Error in connection.\n");
 		return 0;
 	}
-	if (bind(fd, addr, len) < 0) {
+	if (bind(fd, address_server, address_lenght) < 0) {
 		printf("[-]Error in binding.\n");
 		close(fd);
 		return -1;
 	}
 
 	if (type == SOCK_STREAM || type == SOCK_SEQPACKET) {
-		if (listen(fd, qlen) == 0) {
+		if (listen(fd, queue_lenght) == 0) {
 			printf("[+]Listening....\n");
 		} else {
 			printf("[-]Error in binding.\n");
@@ -251,7 +251,7 @@ static int initserver(int type, const struct sockaddr *addr, socklen_t len,
 
 	return fd;
 }
-static int sendall(int connect_fd, char *buffer, int numBytes, int flags) {
+static int send_all(int connect_fd, char *buffer, int numBytes, int flags) {
 	int counter_total_bytes = 0;
 	int counter_bytes_sended_per_iter;
 
@@ -272,7 +272,7 @@ static int sendall(int connect_fd, char *buffer, int numBytes, int flags) {
 	return (counter_bytes_sended_per_iter == -1 ? -1 : counter_total_bytes);
 }
 
-static int recvall(int connect_fd, char *buffer, int numBytes, int flags) {
+static int recv_all(int connect_fd, char *buffer, int numBytes, int flags) {
 	int counter_bytes_recived_per_iter;
 	int counter_total_bytes;
 
@@ -311,7 +311,7 @@ int main() {
 	seraddr.sin_addr.s_addr = inet_addr(IP_ADRESS_SERVER);
 	seraddr.sin_port = htons(PORT);
 
-	if ((socket_fd = initserver(SOCK_STREAM, (struct sockaddr *) &seraddr,
+	if ((socket_fd = init_server(SOCK_STREAM, (struct sockaddr *) &seraddr,
 			sizeof(seraddr), SOCKET_QUEUE_LENGHT)) == -1) {
 		printf("[-]Error initialization server\n");
 		return 0;
@@ -323,51 +323,42 @@ int main() {
 		struct sockaddr_in client_socket_address;
 		socklen_t client_socket_lenght = sizeof(client_socket_address);
 
-		if ((connect_fd = accept(socket_fd, (struct sockaddr *) &client_socket_address,
+		if ((connect_fd = accept(socket_fd,
+				(struct sockaddr *) &client_socket_address,
 				&client_socket_lenght)) == -1) {
 			printf("[-]Error accept client\n");
 			continue;
 		}
 		pid_t child_pid;
+		signal(SIGCHLD, SIG_IGN);
 		if ((child_pid = fork()) == 0) {
+			close(socket_fd);
 			while (1) {
-				if (recvall(connect_fd, buffer, INPUT_BUFFER_LENGHT, 0) == -1) {
+				if (recv_all(connect_fd, buffer, INPUT_BUFFER_LENGHT, 0) == -1) {
 					printf(
 							"[-]Error:Data was not received. Connection will be closed\n");
 					close(connect_fd);
-					return(0);
+					return (0);
 				}
 
 				if (!strcmp(buffer, "exit\r\n")) {
-					strcpy(buffer, "Connection closed\n");
-					if (sendall(connect_fd, buffer, strlen(buffer), 0) == -1)
-						return(0);
 
 					printf("Disconnected from %s:%d\n",
 							inet_ntoa(client_socket_address.sin_addr),
 							ntohs(client_socket_address.sin_port));
 					close(connect_fd);
-					return(0);
+					return (0);
 				} else {
 					printf("Client: %s\n", buffer);
 					calculate_expression(buffer);
-					if (sendall(connect_fd, buffer, strlen(buffer), 0) == -1)
-						return(0);
+					if (send_all(connect_fd, buffer, strlen(buffer), 0) == -1)
+						return (0);
 
 					memset(buffer, 0, sizeof(buffer));
 				}
 			}
-		}else
-		{
-			//parent process
-            int status;
-            waitpid(child_pid, &status, 0);
-            if(WIFEXITED(status)) {
-                printf("Exit normally with code %i\n", WEXITSTATUS(status));
-            }
-            if(WIFSIGNALED(status)) {
-                printf("killed with signal %i\n", WTERMSIG(status));
-            }
+		} else {
+			close(connect_fd);
 		}
 
 	}
