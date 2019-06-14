@@ -31,10 +31,9 @@
 #define INPUT_VALUE_MAX			(999)
 #define INPUT_VALUE_MIN			(-999)
 #define SEPARATOR  				" "
-#define OPERATIONS 				'+','-','/',':','*','^','M','m','h','d','r'
 #define END_SIMBOL_CODE			(0x0a)
 //check and validation
-typedef enum Validations{
+typedef enum Validations {
 	VALIDATION_OK,
 	VALIDATION_ERROR_FIRST_NUMBER_LENGHT,
 	VALIDATION_ERROR_FIRST_NUMBER_RANGE,
@@ -46,6 +45,13 @@ typedef enum Validations{
 	VALIDATION_ERROR_INPUT_DATA,
 } Errors;
 
+static int operation_cnt;
+
+typedef struct {
+	char * operation_simbol;
+	double (*operation)(double, double);
+} function_types;
+
 typedef struct {
 	double fn;
 	double sn;
@@ -56,15 +62,33 @@ typedef struct {
 	char * operation_string;
 } in_data;
 
+//parsing and check validations
 static int define_and_fill_numbers_in_input_struct(in_data * indata);
 static int parse_and_check_validity(in_data * indata);
-static double select_operation_and_process_calculation(in_data * indata);
+static double select_operation_and_process_calculation(in_data * indata,
+		function_types * func_types);
 static void set_error_msg(char * buff, int error);
-static char * calculate_expression(char * buff_);
+//net functions
 static int init_server(int type, const struct sockaddr *address_server,
 		socklen_t address_lenght, int queue_lenght);
 static int send_all(int connect_fd, char *buffer, int numBytes, int flags);
 static int recv_all(int connect_fd, char *buffer, int numBytes, int flags);
+//calculations
+static void init_operations(function_types ** f_types);
+static void add_operation_to_operations(function_types ** f_types,
+		char * operation_simbol, double (*operation)(double fn, double sn));
+static char * calculate_expression(char * buff_);
+//calculations - operations
+static double operation_addition(double fn, double sn);
+static double operation_subtraction(double fn, double sn);
+static double operation_multiplication(double fn, double sn);
+static double operation_division(double fn, double sn);
+static double operation_exponentiation(double fn, double sn);
+static double operation_minimum(double fn, double sn);
+static double operation_maximum(double fn, double sn);
+static double operation_hypotenuse(double fn, double sn);
+static double operation_difference(double fn, double sn);
+static double operation_remainder(double fn, double sn);
 
 static int define_and_fill_numbers_in_input_struct(in_data * indata) {
 	if (strlen(indata->string_first_number) > INPUT_NUMBER_LENGHT)
@@ -88,14 +112,7 @@ static int define_and_fill_numbers_in_input_struct(in_data * indata) {
 	if (indata->sn < INPUT_VALUE_MIN || indata->sn > INPUT_VALUE_MAX)
 		return VALIDATION_ERROR_SECOND_NUMBER_RANGE;
 
-	const char operations[] = { OPERATIONS };
-	for (int n = 0; n < sizeof(operations); n++) {
-		if (!strncmp(operations + n, indata->operation,
-				OPERATION_SIMBOL_LENGHT)) {
-			return VALIDATION_OK;
-		}
-	}
-	return VALIDATION_ERROR_UNKNOWN_OPERATION;
+	return VALIDATION_OK;
 }
 
 static int parse_and_check_validity(in_data * indata) {
@@ -126,41 +143,48 @@ static int parse_and_check_validity(in_data * indata) {
 	return VALIDATION_OK;
 }
 
-static double select_operation_and_process_calculation(in_data * indata) {
-	if (!strcmp(indata->operation, "+")) {
-		return indata->fn + indata->sn;
-	} else if (!strcmp(indata->operation, "-")) {
-		return indata->fn - indata->sn;
-	} else if (!strcmp(indata->operation, ":")
-			|| !strcmp(indata->operation, "/")) {
-		return indata->fn / indata->sn;
-	} else if (!strcmp(indata->operation, "*")) {
-		return indata->fn * indata->sn;
-	} else if (!strcmp(indata->operation, "^")) {
-		return pow(indata->fn, indata->sn);
-	} else if (!strcmp(indata->operation, "h"))
-	//hypotenuse, sqrt (x² + y²)
-			{
-		return hypot(indata->fn, indata->sn);
-	} else if (!strcmp(indata->operation, "d"))
-	//select_operation_and_process_calculation of the positive difference between x and y, fmax (x − y, 0)
-			{
-		return fdim(indata->fn, indata->sn);
-	} else if (!strcmp(indata->operation, "M"))
-	//the largest value among x and y
-			{
-		return fmax(indata->fn, indata->sn);
-	} else if (!strcmp(indata->operation, "m"))
-	//smallest value among x and y
-			{
-		return fmin(indata->fn, indata->sn);
-	} else if (!strcmp(indata->operation, "r"))
-	//calculates the remainder of the division according to IEC 60559
-			{
-		return remainder(indata->fn, indata->sn);
-	} else {
-		return 0;
+static double operation_addition(double fn, double sn) {
+	return fn + sn;
+}
+static double operation_subtraction(double fn, double sn) {
+	return fn - sn;
+}
+static double operation_multiplication(double fn, double sn) {
+	return fn * sn;
+}
+static double operation_division(double fn, double sn) {
+	return fn / sn;
+}
+static double operation_exponentiation(double fn, double sn) {
+	return pow(fn, sn);
+}
+static double operation_minimum(double fn, double sn) {
+	return fmin(fn, sn);
+}
+static double operation_maximum(double fn, double sn) {
+	return fmax(fn, sn);
+}
+static double operation_hypotenuse(double fn, double sn) {
+	return hypot(fn, sn);
+}
+static double operation_difference(double fn, double sn) {
+	return fdim(fn, sn);
+}
+static double operation_remainder(double fn, double sn) {
+	return remainder(fn, sn);
+}
+
+static double select_operation_and_process_calculation(in_data * indata,
+		function_types * func_types) {
+
+	for (int n = 0; n < operation_cnt; n++) {
+		if (!strcmp((func_types + n)->operation_simbol, indata->operation)) {
+			return (func_types + n)->operation(indata->fn, indata->sn);
+			break;
+		}
 	}
+
+	return 0;
 }
 
 static void set_error_msg(char * buff, int error) {
@@ -205,6 +229,17 @@ static void set_error_msg(char * buff, int error) {
 	}
 
 }
+static int check_valid_operarion_simbol(in_data * indata,
+		function_types * func_types) {
+	for (int n = 0; n < operation_cnt; n++) {
+		if (!strcmp((func_types + n)->operation_simbol, indata->operation)) {
+
+			return VALIDATION_OK;
+		}
+	}
+
+	return VALIDATION_ERROR_UNKNOWN_OPERATION;
+}
 static char * calculate_expression(char * buff_) {
 
 	in_data input_data;
@@ -213,19 +248,43 @@ static char * calculate_expression(char * buff_) {
 	int err = parse_and_check_validity(&input_data);
 
 	if (err == VALIDATION_OK) {
-		//do select_operation_and_process_calculation
-		double rez_dbl = select_operation_and_process_calculation(&input_data);
-		int rez_int = (int) rez_dbl;
-		if (rez_dbl == (double) rez_int) {
-			snprintf(buff_, OUTPUT_BUFFER_LENGHT, "%d\n", rez_int);
+		function_types * func_types = (function_types*) malloc(
+				sizeof(function_types));
+		init_operations(&func_types);
+		err = check_valid_operarion_simbol(&input_data, func_types);
+		if (err == VALIDATION_OK) {
+			double rez_dbl = select_operation_and_process_calculation(
+					&input_data, func_types);
+			free(func_types);
+			int rez_int = (int) rez_dbl;
+			if (rez_dbl == (double) rez_int) {
+				snprintf(buff_, OUTPUT_BUFFER_LENGHT, "%d\n", rez_int);
+			} else {
+				snprintf(buff_, OUTPUT_BUFFER_LENGHT, "%0.2f\n", rez_dbl);
+			}
 		} else {
-			snprintf(buff_, OUTPUT_BUFFER_LENGHT, "%0.2f\n", rez_dbl);
+			set_error_msg(buff_, err);
 		}
 	} else {
 		set_error_msg(buff_, err);
 	}
 
 	return buff_;
+}
+static void init_operations(function_types ** f_types) {
+
+	add_operation_to_operations(f_types, "+", operation_addition);
+	add_operation_to_operations(f_types, "-", operation_subtraction);
+	add_operation_to_operations(f_types, "*", operation_multiplication);
+	add_operation_to_operations(f_types, "/", operation_division);
+	add_operation_to_operations(f_types, ":", operation_division);
+	add_operation_to_operations(f_types, "^", operation_exponentiation);
+	add_operation_to_operations(f_types, "m", operation_minimum);
+	add_operation_to_operations(f_types, "M", operation_maximum);
+	add_operation_to_operations(f_types, "h", operation_hypotenuse);
+	add_operation_to_operations(f_types, "d", operation_difference);
+	add_operation_to_operations(f_types, "r", operation_remainder);
+
 }
 
 static int init_server(int type, const struct sockaddr *address_server,
@@ -293,9 +352,7 @@ static int recv_all(int connect_fd, char *buffer, int numBytes, int flags) {
 			printf("[-]Error while receive data. Connection will be closed\n");
 			exit(1);
 		} else if (counter_bytes_recived_per_iter == 0) {
-
 			counter_total_bytes += counter_bytes_recived_per_iter;
-			break;
 		} else {
 			counter_total_bytes += counter_bytes_recived_per_iter;
 		}
@@ -305,6 +362,19 @@ static int recv_all(int connect_fd, char *buffer, int numBytes, int flags) {
 	return (counter_total_bytes < 1 ? -1 : counter_total_bytes);
 
 }
+
+static void add_operation_to_operations(function_types ** f_types,
+		char * operation_simbol, double (*operation)(double fn, double sn)) {
+
+	*f_types = (function_types *) realloc(*f_types,
+			sizeof(function_types) * (operation_cnt + 1));
+	function_types * newItem;
+	newItem = *f_types;
+	newItem[operation_cnt].operation_simbol = operation_simbol;
+	newItem[operation_cnt].operation = operation;
+	operation_cnt++;
+}
+
 int main() {
 
 	int socket_fd;
