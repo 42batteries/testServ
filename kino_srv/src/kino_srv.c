@@ -255,24 +255,22 @@ static char * calculate_expression(char * buff_) {
 		if (err == VALIDATION_OK) {
 			double rez_dbl = select_operation_and_process_calculation(
 					&input_data, func_types);
-			free(func_types);
 			int rez_int = (int) rez_dbl;
 			if (rez_dbl == (double) rez_int) {
 				snprintf(buff_, OUTPUT_BUFFER_LENGHT, "%d\n", rez_int);
 			} else {
 				snprintf(buff_, OUTPUT_BUFFER_LENGHT, "%0.2f\n", rez_dbl);
 			}
-		} else {
-			set_error_msg(buff_, err);
 		}
-	} else {
-		set_error_msg(buff_, err);
+		free(func_types);
 	}
+	if (err != VALIDATION_OK)
+		set_error_msg(buff_, err);
 
 	return buff_;
 }
 static void init_operations(function_types ** f_types) {
-
+	operation_cnt = 0;
 	add_operation_to_operations(f_types, "+", operation_addition);
 	add_operation_to_operations(f_types, "-", operation_subtraction);
 	add_operation_to_operations(f_types, "*", operation_multiplication);
@@ -316,7 +314,7 @@ static int init_server(int type, const struct sockaddr *address_server,
 }
 static int send_all(int connect_fd, char *buffer, int numBytes, int flags) {
 	int counter_total_bytes = 0;
-	int counter_bytes_sended_per_iter;
+	int counter_bytes_sended_per_iter = 0;
 
 	while (counter_total_bytes < numBytes) {
 		counter_bytes_sended_per_iter = send(connect_fd,
@@ -374,12 +372,11 @@ static void add_operation_to_operations(function_types ** f_types,
 	newItem[operation_cnt].operation = operation;
 	operation_cnt++;
 }
-
 int main() {
 
 	int socket_fd;
 	struct sockaddr_in seraddr;
-	char buffer[INPUT_BUFFER_LENGHT];
+	char buffer[INPUT_BUFFER_LENGHT] = { 0 };
 
 	seraddr.sin_family = AF_INET;
 	seraddr.sin_addr.s_addr = inet_addr(IP_ADRESS_SERVER);
@@ -430,6 +427,7 @@ int main() {
 
 					memset(buffer, 0, sizeof(buffer));
 				}
+
 			}
 		} else {
 			close(connect_fd);
