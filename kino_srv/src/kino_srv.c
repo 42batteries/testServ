@@ -17,6 +17,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <math.h>
+#include <float.h>
 
 //net
 #define PORT 					(4444)
@@ -248,15 +249,17 @@ static char * calculate_expression(char * buff_) {
 	int err = parse_and_check_validity(&input_data);
 
 	if (err == VALIDATION_OK) {
-		function_types * func_types = (function_types*) malloc(
-				sizeof(function_types));
+		function_types * func_types = malloc(sizeof(function_types));
+
 		init_operations(&func_types);
 		err = check_valid_operarion_simbol(&input_data, func_types);
 		if (err == VALIDATION_OK) {
 			double rez_dbl = select_operation_and_process_calculation(
 					&input_data, func_types);
 			int rez_int = (int) rez_dbl;
-			if (rez_dbl == (double) rez_int) {
+			if (fabs(rez_dbl - (double) rez_int)
+					<= DBL_EPSILON
+							* fmax(fabs(rez_dbl), fabs((double) rez_int))) {
 				snprintf(buff_, OUTPUT_BUFFER_LENGHT, "%d\n", rez_int);
 			} else {
 				snprintf(buff_, OUTPUT_BUFFER_LENGHT, "%0.2f\n", rez_dbl);
@@ -334,23 +337,20 @@ static int send_all(int connect_fd, char *buffer, int numBytes, int flags) {
 }
 
 static int recv_all(int connect_fd, char *buffer, int numBytes, int flags) {
-	int counter_bytes_recived_per_iter;
-	int counter_total_bytes;
+	int counter_bytes_recived_per_iter = 0;
+	int counter_total_bytes = 0;
 
-	counter_total_bytes = 0;
 	while ((counter_total_bytes < numBytes)
 			&& counter_bytes_recived_per_iter != -1
 			&& !strrchr(buffer, END_SIMBOL_CODE)) {
 		counter_bytes_recived_per_iter = recv(connect_fd,
 				buffer + counter_total_bytes, numBytes - counter_total_bytes,
-				0);
+				flags);
 
 		if (counter_total_bytes == -1) {
 			close(connect_fd);
 			printf("[-]Error while receive data. Connection will be closed\n");
 			exit(1);
-		} else if (counter_bytes_recived_per_iter == 0) {
-			counter_total_bytes += counter_bytes_recived_per_iter;
 		} else {
 			counter_total_bytes += counter_bytes_recived_per_iter;
 		}
@@ -364,12 +364,13 @@ static int recv_all(int connect_fd, char *buffer, int numBytes, int flags) {
 static void add_operation_to_operations(function_types ** f_types,
 		char * operation_simbol, double (*operation)(double fn, double sn)) {
 
-	*f_types = (function_types *) realloc(*f_types,
-			sizeof(function_types) * (operation_cnt + 1));
-	function_types * newItem;
-	newItem = *f_types;
-	newItem[operation_cnt].operation_simbol = operation_simbol;
-	newItem[operation_cnt].operation = operation;
+	if (!(*f_types = realloc(*f_types,
+			sizeof(function_types) * (operation_cnt + 1)))) {
+		printf("Error allocation memory\n");
+		exit(1);
+	}
+	(*f_types + operation_cnt)->operation_simbol = operation_simbol;
+	(*f_types + operation_cnt)->operation = operation;
 	operation_cnt++;
 }
 int main() {
@@ -415,7 +416,9 @@ int main() {
 				if (!strcmp(buffer, "exit\r\n")) {
 
 					printf("Disconnected from %s:%d\n",
-							inet_ntoa(client_socket_address.sin_addr),
+							(inet_ntoa(client_socket_address.sin_addr)) == 0 ?
+									"address not defined" :
+									inet_ntoa(client_socket_address.sin_addr),
 							ntohs(client_socket_address.sin_port));
 					close(connect_fd);
 					return (0);
