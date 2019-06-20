@@ -476,8 +476,7 @@ int main() {
 			printf("[-]Error: Failed to create thread.\n");
 		}
 
-#endif
-#if !defined(__GNUC__)
+#else
 
 		signal(SIGCHLD, SIG_IGN);
 		if (fork() == 0) {
