@@ -11,13 +11,37 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/socket.h>
 #include <sys/types.h>
+#include <math.h>
+#include <float.h>
+#if defined(_WIN32)
+#include <winsock2.h>
+//#include <Winsock.h>
+typedef int socklen_t;
+#define close(a) closesocket(a)
+#define SOCKOPT_ARG_COMPAT(a) ((const char *) a)
+#define SOCKINIT WSADATA WsaData;WSAStartup( MAKEWORD(2,2), &WsaData );
+#define SOCKSTOP WSACleanup();
+
+typedef struct {
+	int connect_fd;
+	char * buffer;
+	struct sockaddr_in * client_socket_address;
+
+}win_params_t;
+
+
+#else
+
+#include <sys/socket.h>
 #include <sys/wait.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <math.h>
-#include <float.h>
+
+#define SOCKINIT
+#define SOCKSTOP
+
+#endif
 
 //net
 #define PORT 					(4444)
@@ -373,12 +397,50 @@ static void add_operation_to_operations(function_types ** f_types,
 	(*f_types + operation_cnt)->operation = operation;
 	operation_cnt++;
 }
+#if defined(_WIN32)
+DWORD WINAPI win_thread(void * param) {
+	win_params_t * ptr = (win_params_t *) param;
+
+	while (1) {
+		if (recv_all(ptr->connect_fd, ptr->buffer, INPUT_BUFFER_LENGHT, 0)
+				== -1) {
+			printf(
+					"[-]Error:Data was not received. Connection will be closed\n");
+			close(ptr->connect_fd);
+			return (0);
+		}
+
+		if (!strcmp(ptr->buffer, "exit\r\n")) {
+
+			printf("Disconnected from %s:%d\n",
+					(inet_ntoa(ptr->client_socket_address->sin_addr)) == 0 ?
+							"address not defined" :
+							inet_ntoa(ptr->client_socket_address->sin_addr),
+					ntohs(ptr->client_socket_address->sin_port));
+			close(ptr->connect_fd);
+			return (0);
+		} else {
+			printf("Client: %s\n", ptr->buffer);
+			calculate_expression(ptr->buffer);
+			if (send_all(ptr->connect_fd, ptr->buffer, strlen(ptr->buffer), 0)
+					== -1)
+				return (0);
+
+			memset(ptr->buffer, 0, sizeof(ptr->buffer));
+		}
+
+	}
+
+	return 0;
+}
+#endif
 int main() {
 
 	int socket_fd;
 	struct sockaddr_in seraddr;
 	char buffer[INPUT_BUFFER_LENGHT] = { 0 };
 
+	SOCKINIT
 	seraddr.sin_family = AF_INET;
 	seraddr.sin_addr.s_addr = inet_addr(IP_ADRESS_SERVER);
 	seraddr.sin_port = htons(PORT);
@@ -401,6 +463,22 @@ int main() {
 			printf("[-]Error accept client\n");
 			continue;
 		}
+#if defined(_WIN32)
+
+		static win_params_t params;
+		params.connect_fd = connect_fd;
+		params.buffer = buffer;
+		params.client_socket_address = &client_socket_address;
+
+		HANDLE hThr = CreateThread( NULL, 0,
+				(LPTHREAD_START_ROUTINE) win_thread, (void*) &params, 0, NULL);
+		if (NULL == hThr) {
+			printf("[-]Error: Failed to create thread.\n");
+		}
+
+#endif
+#if !defined(__GNUC__)
+
 		signal(SIGCHLD, SIG_IGN);
 		if (fork() == 0) {
 			close(socket_fd);
@@ -417,8 +495,8 @@ int main() {
 
 					printf("Disconnected from %s:%d\n",
 							(inet_ntoa(client_socket_address.sin_addr)) == 0 ?
-									"address not defined" :
-									inet_ntoa(client_socket_address.sin_addr),
+							"address not defined" :
+							inet_ntoa(client_socket_address.sin_addr),
 							ntohs(client_socket_address.sin_port));
 					close(connect_fd);
 					return (0);
@@ -426,7 +504,7 @@ int main() {
 					printf("Client: %s\n", buffer);
 					calculate_expression(buffer);
 					if (send_all(connect_fd, buffer, strlen(buffer), 0) == -1)
-						return (0);
+					return (0);
 
 					memset(buffer, 0, sizeof(buffer));
 				}
@@ -434,8 +512,11 @@ int main() {
 			}
 		} else {
 			close(connect_fd);
+
 		}
 
+#endif
+		SOCKSTOP
 	}
 
 	return 0;
