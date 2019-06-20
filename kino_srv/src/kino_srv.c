@@ -43,21 +43,21 @@ typedef struct {
 
 #endif
 
-//net
+/*net*/
 #define PORT 					(4444)
 #define IP_ADRESS_SERVER		"127.0.0.1"
 #define SOCKET_QUEUE_LENGHT		(10)
-//io
+/*io*/
 #define INPUT_NUMBER_LENGHT		(16)
 #define INPUT_BUFFER_LENGHT		(1024)
 #define OUTPUT_BUFFER_LENGHT	(64)
-//parsing
+/*parsing*/
 #define OPERATION_SIMBOL_LENGHT	(1)
 #define INPUT_VALUE_MAX			(999)
 #define INPUT_VALUE_MIN			(-999)
 #define SEPARATOR  				" "
 #define END_SIMBOL_CODE			(0x0a)
-//check and validation
+/*check and validation*/
 typedef enum Validations {
 	VALIDATION_OK,
 	VALIDATION_ERROR_FIRST_NUMBER_LENGHT,
@@ -87,23 +87,23 @@ typedef struct {
 	char * operation_string;
 } in_data;
 
-//parsing and check validations
+/*parsing and check validations*/
 static int define_and_fill_numbers_in_input_struct(in_data * indata);
 static int parse_and_check_validity(in_data * indata);
 static double select_operation_and_process_calculation(in_data * indata,
 		function_types * func_types);
 static void set_error_msg(char * buff, int error);
-//net functions
+/*net functions*/
 static int init_server(int type, const struct sockaddr *address_server,
 		socklen_t address_lenght, int queue_lenght);
 static int send_all(int connect_fd, char *buffer, int numBytes, int flags);
 static int recv_all(int connect_fd, char *buffer, int numBytes, int flags);
-//calculations
+/*calculations*/
 static void init_operations(function_types ** f_types);
 static void add_operation_to_operations(function_types ** f_types,
 		char * operation_simbol, double (*operation)(double fn, double sn));
 static char * calculate_expression(char * buff_);
-//calculations - operations
+/*calculations - operations*/
 static double operation_addition(double fn, double sn);
 static double operation_subtraction(double fn, double sn);
 static double operation_multiplication(double fn, double sn);
@@ -201,8 +201,8 @@ static double operation_remainder(double fn, double sn) {
 
 static double select_operation_and_process_calculation(in_data * indata,
 		function_types * func_types) {
-
-	for (int n = 0; n < operation_cnt; n++) {
+int n;
+	for (n = 0; n < operation_cnt; n++) {
 		if (!strcmp((func_types + n)->operation_simbol, indata->operation)) {
 			return (func_types + n)->operation(indata->fn, indata->sn);
 			break;
@@ -256,7 +256,8 @@ static void set_error_msg(char * buff, int error) {
 }
 static int check_valid_operarion_simbol(in_data * indata,
 		function_types * func_types) {
-	for (int n = 0; n < operation_cnt; n++) {
+	int n;
+	for (n = 0; n < operation_cnt; n++) {
 		if (!strcmp((func_types + n)->operation_simbol, indata->operation)) {
 
 			return VALIDATION_OK;
