@@ -16,7 +16,6 @@
 #include <float.h>
 #if defined(_WIN32)
 #include <winsock2.h>
-//#include <Winsock.h>
 typedef int socklen_t;
 #define close(a) closesocket(a)
 #define SOCKOPT_ARG_COMPAT(a) ((const char *) a)
@@ -113,7 +112,62 @@ static double operation_minimum(double fn, double sn);
 static double operation_maximum(double fn, double sn);
 static double operation_hypotenuse(double fn, double sn);
 static double operation_difference(double fn, double sn);
-static double operation_remainder(double fn, double sn);
+static double operation_remainder_of_division(double fn, double sn);
+/*calculations - conversions acc c89*/
+static void ftoa(float n, char *res, int afterpoint);
+static int intToStr(int x, char str[], int d);
+static void reverse(char *str, int len);
+static double f_max(double fn, double sn);
+
+static double f_max(double fn, double sn)
+{ /*
+this function use only for Epsilon bc if fn=sn result is not defined
+*/
+	return fabs(fn) > fabs(sn) ? fn : sn;
+}
+
+static void reverse(char *str, int len)
+{
+    int i=0, j=len-1, temp;
+    while (i<j)
+    {
+        temp = str[i];
+        str[i] = str[j];
+        str[j] = temp;
+        i++; j--;
+    }
+}
+
+static int intToStr(int x, char str[], int d)
+{
+    int i = 0;
+    while (x)
+    {
+        str[i++] = (x%10) + '0';
+        x = x/10;
+    }
+    while (i < d)
+        str[i++] = '0';
+
+    reverse(str, i);
+    str[i] = '\0';
+    return i;
+}
+
+static void ftoa(float n, char *res, int afterpoint)
+{
+    int ipart = (int)n;
+    float fpart = n - (float)ipart;
+    int i = intToStr(ipart, res, 0);
+    if (afterpoint != 0)
+    {
+        res[i] = '.';
+        fpart = fpart * pow(10, afterpoint);
+        intToStr((int)fpart, res + i + 1, afterpoint);
+    }
+    strcat(res, "\n");
+}
+
 
 static int define_and_fill_numbers_in_input_struct(in_data * indata) {
 	if (strlen(indata->string_first_number) > INPUT_NUMBER_LENGHT)
@@ -184,19 +238,20 @@ static double operation_exponentiation(double fn, double sn) {
 	return pow(fn, sn);
 }
 static double operation_minimum(double fn, double sn) {
-	return fmin(fn, sn);
+	return fabs(fn - sn)<= DBL_EPSILON * f_max(fabs(fn), fabs(sn)) ? fn : sn;
 }
 static double operation_maximum(double fn, double sn) {
-	return fmax(fn, sn);
+	return fabs(fn - sn)<= DBL_EPSILON * f_max(fabs(fn), fabs(sn)) ? sn : fn;
 }
 static double operation_hypotenuse(double fn, double sn) {
-	return hypot(fn, sn);
+	return pow((pow(fn,2)+pow(sn,2)), 0.5);
 }
 static double operation_difference(double fn, double sn) {
-	return fdim(fn, sn);
+
+	return (fn - sn) < 0 ? 0 : fn - sn;
 }
-static double operation_remainder(double fn, double sn) {
-	return remainder(fn, sn);
+static double operation_remainder_of_division(double fn, double sn) {
+	return fmod(fn, sn);
 }
 
 static double select_operation_and_process_calculation(in_data * indata,
@@ -284,10 +339,10 @@ static char * calculate_expression(char * buff_) {
 			int rez_int = (int) rez_dbl;
 			if (fabs(rez_dbl - (double) rez_int)
 					<= DBL_EPSILON
-							* fmax(fabs(rez_dbl), fabs((double) rez_int))) {
-				snprintf(buff_, OUTPUT_BUFFER_LENGHT, "%d\n", rez_int);
+							* f_max(fabs(rez_dbl), fabs((double) rez_int))) {
+				ftoa(rez_dbl, buff_, 0);
 			} else {
-				snprintf(buff_, OUTPUT_BUFFER_LENGHT, "%0.2f\n", rez_dbl);
+				ftoa(rez_dbl, buff_, 4);
 			}
 		}
 		free(func_types);
@@ -309,7 +364,7 @@ static void init_operations(function_types ** f_types) {
 	add_operation_to_operations(f_types, "M", operation_maximum);
 	add_operation_to_operations(f_types, "h", operation_hypotenuse);
 	add_operation_to_operations(f_types, "d", operation_difference);
-	add_operation_to_operations(f_types, "r", operation_remainder);
+	add_operation_to_operations(f_types, "r", operation_remainder_of_division);
 
 }
 
