@@ -260,7 +260,6 @@ int n;
 	for (n = 0; n < operation_cnt; n++) {
 		if (!strcmp((func_types + n)->operation_simbol, indata->operation)) {
 			return (func_types + n)->operation(indata->fn, indata->sn);
-			break;
 		}
 	}
 
@@ -482,7 +481,7 @@ DWORD WINAPI win_thread(void * param) {
 					== -1)
 				return (0);
 
-			memset(ptr->buffer, 0, sizeof(ptr->buffer));
+			memset(ptr->buffer, 0, sizeof(char) * INPUT_BUFFER_LENGHT);
 		}
 
 	}
@@ -561,7 +560,7 @@ int main() {
 					if (send_all(connect_fd, buffer, strlen(buffer), 0) == -1)
 					return (0);
 
-					memset(buffer, 0, sizeof(buffer));
+					memset(buffer, 0, sizeof(char) * INPUT_BUFFER_LENGHT);
 				}
 
 			}
